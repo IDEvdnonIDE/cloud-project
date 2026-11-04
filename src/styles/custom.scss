@@ -1,0 +1,41 @@
+// Bootstrap theme overrides only — no custom classes.
+// Change these variables to re-skin the whole site.
+
+// Colours
+$primary: #e4572e;
+$secondary: #6c757d;
+$success: #2a9d8f;
+$warning: #f4a261;
+$danger: #d62839;
+$info: #3a86ff;
+$dark: #2b2d42;
+
+$body-bg: #fffaf5;
+$body-color: #2b2d42;
+
+// Typography
+$font-family-sans-serif: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+$headings-font-weight: 700;
+$display-font-weight: 800;
+$lead-font-weight: 400;
+
+// Shape
+$border-radius: 0.6rem;
+$border-radius-sm: 0.4rem;
+$border-radius-lg: 0.9rem;
+$border-radius-xl: 1.25rem;
+$border-radius-pill: 50rem;
+
+// Components
+$enable-shadows: false;
+$card-border-width: 0;
+$card-cap-bg: transparent;
+$btn-font-weight: 600;
+$badge-font-weight: 600;
+$navbar-brand-font-size: 1.4rem;
+$link-decoration: none;
+$pagination-border-radius: $border-radius;
+$list-group-border-color: rgba(0, 0, 0, 0.07);
+$offcanvas-horizontal-width: 320px;
+
+@import 'bootstrap/scss/bootstrap';
