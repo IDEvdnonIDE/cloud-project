@@ -129,7 +129,11 @@ function RecipeView({ id }) {
           <p>
             By{' '}
             <Link to={`/chefs/${recipe.author.id}`} className="fw-semibold">
-              {recipe.author.avatar} {recipe.author.name}
+              {recipe.author.avatar?.startsWith('http') ? (
+                <img src={recipe.author.avatar} alt="" width={24} height={24} className="rounded-circle" referrerPolicy="no-referrer" />
+              ) : (
+                recipe.author.avatar
+              )}{' '}{recipe.author.name}
             </Link>{' '}
             <span className="text-body-secondary">· {formatDate(recipe.createdAt)}</span>
           </p>

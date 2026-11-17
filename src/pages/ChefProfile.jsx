@@ -42,7 +42,13 @@ export default function ChefProfile() {
     <Container>
       <Card className="mb-5 bg-primary-subtle">
         <Card.Body className="d-flex flex-column flex-md-row align-items-md-center gap-4 p-4 p-md-5">
-          <div className="display-1 lh-1">{chef.data.avatar}</div>
+          <div className="display-1 lh-1">
+            {chef.data.avatar?.startsWith('http') ? (
+              <img src={chef.data.avatar} alt="" width={80} height={80} className="rounded-circle" referrerPolicy="no-referrer" />
+            ) : (
+              chef.data.avatar
+            )}
+          </div>
           <div>
             <h1 className="display-6 fw-bold mb-1">{chef.data.name}</h1>
             {chef.data.bio && <p className="lead mb-2">{chef.data.bio}</p>}

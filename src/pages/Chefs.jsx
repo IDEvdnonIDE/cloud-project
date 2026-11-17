@@ -21,7 +21,13 @@ export default function Chefs() {
             <Col key={chef.id}>
               <Card className="h-100 text-center">
                 <Card.Body className="p-4">
-                  <div className="display-3 mb-2">{chef.avatar}</div>
+                  <div className="display-3 mb-2">
+                    {chef.avatar?.startsWith('http') ? (
+                      <img src={chef.avatar} alt="" width={64} height={64} className="rounded-circle" referrerPolicy="no-referrer" />
+                    ) : (
+                      chef.avatar
+                    )}
+                  </div>
                   <Card.Title as="h2" className="h5">
                     <Link to={`/chefs/${chef.id}`} className="stretched-link text-reset text-decoration-none">
                       {chef.name}

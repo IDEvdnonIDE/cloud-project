@@ -109,7 +109,11 @@ export default function CommentSection({ recipe }) {
             {comments.slice(0, visible).map((c) => (
               <div key={c.id} className="d-flex gap-3 border border-secondary rounded-2 p-3">
                 <div className="fs-3 lh-1" aria-hidden="true">
-                  {c.author.avatar}
+                  {c.author.avatar?.startsWith('http') ? (
+                    <img src={c.author.avatar} alt="" width={32} height={32} className="rounded-circle" referrerPolicy="no-referrer" />
+                  ) : (
+                    c.author.avatar
+                  )}
                 </div>
                 <div className="flex-grow-1">
                   <div className="d-flex justify-content-between align-items-start gap-2">

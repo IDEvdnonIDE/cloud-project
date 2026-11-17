@@ -1,72 +1,19 @@
-// Mock API backed by localStorage.
-// Every function is async and returns plain data, so when you build the real
-// backend you only need to swap these bodies for fetch() calls.
-import * as db from './storage';
-import { seedUsers, seedRecipes, seedVotes, seedComments } from '../data/seed';
+// Firestore-backed API for Spoonful.
+// Function signatures match the old localStorage mock so components
+// that `import * as api` keep working without changes.
+import { db } from './firebase';
+import {
+  collection, doc, getDoc, getDocs, setDoc, deleteDoc,
+  query, where, writeBatch, increment, documentId,
+} from 'firebase/firestore';
 import { MEAL_TYPES, DIETS, DIFFICULTIES } from '../utils/constants';
-import { uid } from '../utils/format';
 
-// Bump when seed data changes so browsers with old demo data reseed.
-const DB_VERSION = 2;
-const wait = (ms = 200) => new Promise((resolve) => setTimeout(resolve, ms));
+/* ----------------------------- Helpers ----------------------------- */
 
-function seed() {
-  db.write('users', seedUsers);
-  db.write('recipes', seedRecipes);
-  db.write('votes', seedVotes);
-  db.write('comments', seedComments);
-  db.write('version', DB_VERSION);
-}
-
-if (db.read('version') !== DB_VERSION) seed();
-
-const load = (key) => db.read(key, key === 'votes' ? {} : []);
-
-function save(key, value) {
-  if (!db.write(key, value)) {
-    throw new Error('Could not save. Your browser storage may be full, so try a smaller image.');
-  }
-}
-
-function publicUser(user) {
-  if (!user) return null;
-  const copy = { ...user };
-  delete copy.password;
-  return copy;
-}
-
-function context() {
-  const users = load('users');
-  return {
-    usersById: Object.fromEntries(users.map((u) => [u.id, u])),
-    votes: load('votes'),
-    comments: load('comments'),
-  };
-}
-
-function voteCounts(votesForRecipe = {}) {
-  const values = Object.values(votesForRecipe);
-  return {
-    ups: values.filter((v) => v === 1).length,
-    downs: values.filter((v) => v === -1).length,
-  };
-}
-
-function enrich(recipe, ctx) {
-  const { ups, downs } = voteCounts(ctx.votes[recipe.id]);
-  const author = ctx.usersById[recipe.authorId];
-  return {
-    ...recipe,
-    totalTime: (Number(recipe.prepTime) || 0) + (Number(recipe.cookTime) || 0),
-    ups,
-    downs,
-    score: ups - downs,
-    commentCount: ctx.comments.filter((c) => c.recipeId === recipe.id).length,
-    author: author
-      ? { id: author.id, name: author.name, avatar: author.avatar }
-      : { id: recipe.authorId, name: 'Unknown chef', avatar: '🧑‍🍳' },
-  };
-}
+const recipesCol = collection(db, 'recipes');
+const votesCol   = collection(db, 'votes');
+const commentsCol = collection(db, 'comments');
+const usersCol   = collection(db, 'users');
 
 function requireUser(user) {
   if (!user) throw new Error('Please log in first.');
@@ -101,10 +48,43 @@ function sanitizeRecipe(data) {
   };
 }
 
+/**
+ * Fetch user docs for a set of UIDs, returned as { uid: {id, name, avatar} }.
+ * Uses batched `in` queries (max 30 IDs per query).
+ */
+async function fetchAuthors(uids) {
+  const unique = [...new Set(uids.filter(Boolean))];
+  if (!unique.length) return {};
+  const map = {};
+  for (let i = 0; i < unique.length; i += 30) {
+    const batch = unique.slice(i, i + 30);
+    const snap = await getDocs(query(usersCol, where(documentId(), 'in', batch)));
+    snap.forEach((d) => {
+      const u = d.data();
+      map[d.id] = { id: d.id, name: u.name, avatar: u.avatar };
+    });
+  }
+  return map;
+}
+
+/** Attach computed fields (totalTime, score) and author info to a recipe doc. */
+function enrich(recipe, authors) {
+  const ups = recipe.ups || 0;
+  const downs = recipe.downs || 0;
+  return {
+    ...recipe,
+    totalTime: (Number(recipe.prepTime) || 0) + (Number(recipe.cookTime) || 0),
+    ups,
+    downs,
+    score: ups - downs,
+    commentCount: recipe.commentCount || 0,
+    author: authors[recipe.authorId] || { id: recipe.authorId, name: 'Unknown chef', avatar: '🧑‍🍳' },
+  };
+}
+
 /* ----------------------------- Recipes ----------------------------- */
 
 export async function getRecipes(filters = {}) {
-  await wait();
   const {
     q = '',
     ingredients = [],
@@ -118,8 +98,11 @@ export async function getRecipes(filters = {}) {
     sort = 'top',
   } = filters;
 
-  const ctx = context();
-  let list = load('recipes').map((r) => enrich(r, ctx));
+  // Fetch all recipes then filter client-side (dataset is small)
+  const snap = await getDocs(recipesCol);
+  const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const authors = await fetchAuthors(raw.map((r) => r.authorId));
+  let list = raw.map((r) => enrich(r, authors));
 
   if (authorId) list = list.filter((r) => r.authorId === authorId);
 
@@ -161,214 +144,264 @@ export async function getRecipes(filters = {}) {
 }
 
 export async function getRecipe(id) {
-  await wait();
-  const recipe = load('recipes').find((r) => r.id === id);
-  if (!recipe) throw new Error('Recipe not found');
-  return enrich(recipe, context());
+  const snap = await getDoc(doc(db, 'recipes', id));
+  if (!snap.exists()) throw new Error('Recipe not found');
+  const recipe = { id: snap.id, ...snap.data() };
+  const authors = await fetchAuthors([recipe.authorId]);
+  return enrich(recipe, authors);
 }
 
 export async function getRecipesByIds(ids = []) {
-  await wait();
-  const ctx = context();
-  const byId = Object.fromEntries(load('recipes').map((r) => [r.id, r]));
-  return ids.filter((id) => byId[id]).map((id) => enrich(byId[id], ctx));
+  if (!ids.length) return [];
+  const results = [];
+  // Firestore `in` supports up to 30 values per query
+  for (let i = 0; i < ids.length; i += 30) {
+    const chunk = ids.slice(i, i + 30);
+    const snap = await getDocs(query(recipesCol, where(documentId(), 'in', chunk)));
+    snap.forEach((d) => results.push({ id: d.id, ...d.data() }));
+  }
+  const authors = await fetchAuthors(results.map((r) => r.authorId));
+  // Return in the same order as the input ids, skip missing
+  const byId = Object.fromEntries(results.map((r) => [r.id, r]));
+  return ids.filter((id) => byId[id]).map((id) => enrich(byId[id], authors));
 }
 
 export async function getFacets() {
-  await wait(50);
-  const cuisines = [...new Set(load('recipes').map((r) => r.cuisine))].sort();
+  const snap = await getDocs(recipesCol);
+  const cuisines = [...new Set(snap.docs.map((d) => d.data().cuisine))].sort();
   return { cuisines, mealTypes: MEAL_TYPES, diets: DIETS, difficulties: DIFFICULTIES };
 }
 
 export async function createRecipe(data, user) {
-  await wait();
   requireCreator(user);
-  const recipe = { ...sanitizeRecipe(data), id: uid('r'), authorId: user.id, createdAt: new Date().toISOString() };
-  save('recipes', [recipe, ...load('recipes')]);
-  return recipe;
+  const id = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  const recipe = {
+    ...sanitizeRecipe(data),
+    authorId: user.id,
+    createdAt: new Date().toISOString(),
+    ups: 0,
+    downs: 0,
+    commentCount: 0,
+  };
+  await setDoc(doc(db, 'recipes', id), recipe);
+  return { id, ...recipe };
 }
 
 export async function updateRecipe(id, data, user) {
-  await wait();
   requireCreator(user);
-  const recipes = load('recipes');
-  const index = recipes.findIndex((r) => r.id === id);
-  if (index === -1) throw new Error('Recipe not found');
-  if (recipes[index].authorId !== user.id) throw new Error('You can only edit your own recipes.');
-  recipes[index] = { ...recipes[index], ...sanitizeRecipe(data), updatedAt: new Date().toISOString() };
-  save('recipes', recipes);
-  return recipes[index];
+  const snap = await getDoc(doc(db, 'recipes', id));
+  if (!snap.exists()) throw new Error('Recipe not found');
+  const existing = snap.data();
+  if (existing.authorId !== user.id) throw new Error('You can only edit your own recipes.');
+  const updated = { ...sanitizeRecipe(data), updatedAt: new Date().toISOString() };
+  await setDoc(doc(db, 'recipes', id), updated, { merge: true });
+  return { id, ...existing, ...updated };
 }
 
 export async function deleteRecipe(id, user) {
-  await wait();
   requireCreator(user);
-  const recipes = load('recipes');
-  const recipe = recipes.find((r) => r.id === id);
-  if (!recipe) throw new Error('Recipe not found');
-  if (recipe.authorId !== user.id) throw new Error('You can only delete your own recipes.');
-  save('recipes', recipes.filter((r) => r.id !== id));
-  const votes = load('votes');
-  delete votes[id];
-  save('votes', votes);
-  save('comments', load('comments').filter((c) => c.recipeId !== id));
+  const snap = await getDoc(doc(db, 'recipes', id));
+  if (!snap.exists()) throw new Error('Recipe not found');
+  if (snap.data().authorId !== user.id) throw new Error('You can only delete your own recipes.');
+
+  const batch = writeBatch(db);
+
+  // Cascade: remove all votes and comments for this recipe
+  const votesSnap = await getDocs(query(votesCol, where('recipeId', '==', id)));
+  votesSnap.forEach((d) => batch.delete(d.ref));
+
+  const commentsSnap = await getDocs(query(commentsCol, where('recipeId', '==', id)));
+  commentsSnap.forEach((d) => batch.delete(d.ref));
+
+  batch.delete(doc(db, 'recipes', id));
+  await batch.commit();
 }
 
 /* ------------------------------ Votes ------------------------------ */
 
+/**
+ * Each vote is a document in the `votes` collection with ID `{recipeId}_{userId}`
+ * and fields { recipeId, userId, value }.
+ * Aggregate counts (ups, downs) are denormalized on the recipe document and
+ * updated atomically via writeBatch + increment.
+ */
+
 export async function getVoteSummary(recipeId, userId) {
-  await wait(50);
-  const votes = load('votes')[recipeId] || {};
-  return { ...voteCounts(votes), myVote: (userId && votes[userId]) || 0 };
+  const recipeSnap = await getDoc(doc(db, 'recipes', recipeId));
+  const data = recipeSnap.exists() ? recipeSnap.data() : {};
+  let myVote = 0;
+  if (userId) {
+    const voteSnap = await getDoc(doc(db, 'votes', `${recipeId}_${userId}`));
+    myVote = voteSnap.exists() ? voteSnap.data().value : 0;
+  }
+  return { ups: data.ups || 0, downs: data.downs || 0, myVote };
 }
 
 /** value: 1 (good) or -1 (bad). Voting the same way twice removes the vote. */
 export async function vote(recipeId, userId, value) {
-  await wait(150);
   if (!userId) throw new Error('Please log in to vote.');
-  const votes = load('votes');
-  const forRecipe = { ...(votes[recipeId] || {}) };
-  if (forRecipe[userId] === value) delete forRecipe[userId];
-  else forRecipe[userId] = value;
-  votes[recipeId] = forRecipe;
-  save('votes', votes);
-  return { ...voteCounts(forRecipe), myVote: forRecipe[userId] || 0 };
+
+  const voteRef = doc(db, 'votes', `${recipeId}_${userId}`);
+  const recipeRef = doc(db, 'recipes', recipeId);
+  const voteSnap = await getDoc(voteRef);
+
+  const batch = writeBatch(db);
+
+  if (voteSnap.exists()) {
+    const oldValue = voteSnap.data().value;
+    if (oldValue === value) {
+      // Same vote again → toggle off
+      batch.delete(voteRef);
+      batch.update(recipeRef, { [oldValue === 1 ? 'ups' : 'downs']: increment(-1) });
+    } else {
+      // Switching direction (up↔down)
+      batch.set(voteRef, { recipeId, userId, value });
+      batch.update(recipeRef, {
+        [oldValue === 1 ? 'ups' : 'downs']: increment(-1),
+        [value === 1 ? 'ups' : 'downs']: increment(1),
+      });
+    }
+  } else {
+    // New vote
+    batch.set(voteRef, { recipeId, userId, value });
+    batch.update(recipeRef, { [value === 1 ? 'ups' : 'downs']: increment(1) });
+  }
+
+  await batch.commit();
+
+  // Read back updated state
+  const updatedRecipe = await getDoc(recipeRef);
+  const rd = updatedRecipe.data();
+  const updatedVote = await getDoc(voteRef);
+  return {
+    ups: rd.ups || 0,
+    downs: rd.downs || 0,
+    myVote: updatedVote.exists() ? updatedVote.data().value : 0,
+  };
 }
 
 /* ----------------------------- Comments ---------------------------- */
 
-function withAuthor(comment, usersById) {
-  const u = usersById[comment.userId];
-  return { ...comment, author: u ? { id: u.id, name: u.name, avatar: u.avatar } : { id: comment.userId, name: 'Deleted user', avatar: '👤' } };
-}
-
 export async function getComments(recipeId) {
-  await wait();
-  const { usersById } = context();
-  return load('comments')
-    .filter((c) => c.recipeId === recipeId)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .map((c) => withAuthor(c, usersById));
+  const snap = await getDocs(query(commentsCol, where('recipeId', '==', recipeId)));
+  const comments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  comments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const authors = await fetchAuthors(comments.map((c) => c.userId));
+  return comments.map((c) => ({
+    ...c,
+    author: authors[c.userId] || { id: c.userId, name: 'Deleted user', avatar: '👤' },
+  }));
 }
 
 export async function getCommentsByUser(userId) {
-  await wait();
-  const recipes = Object.fromEntries(load('recipes').map((r) => [r.id, r]));
-  return load('comments')
-    .filter((c) => c.userId === userId && recipes[c.recipeId])
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .map((c) => ({ ...c, recipe: { id: c.recipeId, title: recipes[c.recipeId].title, emoji: recipes[c.recipeId].emoji } }));
+  const snap = await getDocs(query(commentsCol, where('userId', '==', userId)));
+  const comments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  comments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // Attach recipe title/emoji to each comment
+  const recipeIds = [...new Set(comments.map((c) => c.recipeId))];
+  const recipeMap = {};
+  for (let i = 0; i < recipeIds.length; i += 30) {
+    const chunk = recipeIds.slice(i, i + 30);
+    const rSnap = await getDocs(query(recipesCol, where(documentId(), 'in', chunk)));
+    rSnap.forEach((d) => { recipeMap[d.id] = d.data(); });
+  }
+
+  return comments
+    .filter((c) => recipeMap[c.recipeId])
+    .map((c) => ({
+      ...c,
+      recipe: { id: c.recipeId, title: recipeMap[c.recipeId].title, emoji: recipeMap[c.recipeId].emoji },
+    }));
 }
 
 export async function addComment(recipeId, user, body) {
-  await wait();
   requireUser(user);
   const text = body.trim();
   if (!text) throw new Error('Comment cannot be empty.');
   if (text.length > 1000) throw new Error('Comments are limited to 1000 characters.');
-  const comment = { id: uid('c'), recipeId, userId: user.id, body: text, createdAt: new Date().toISOString() };
-  save('comments', [...load('comments'), comment]);
-  return comment;
+
+  const id = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  const comment = { recipeId, userId: user.id, body: text, createdAt: new Date().toISOString() };
+
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'comments', id), comment);
+  batch.update(doc(db, 'recipes', recipeId), { commentCount: increment(1) });
+  await batch.commit();
+
+  return { id, ...comment };
 }
 
 export async function deleteComment(commentId, user) {
-  await wait();
   requireUser(user);
-  const comments = load('comments');
-  const comment = comments.find((c) => c.id === commentId);
-  if (!comment) throw new Error('Comment not found');
-  const recipe = load('recipes').find((r) => r.id === comment.recipeId);
+  const snap = await getDoc(doc(db, 'comments', commentId));
+  if (!snap.exists()) throw new Error('Comment not found');
+  const comment = snap.data();
+
+  const recipeSnap = await getDoc(doc(db, 'recipes', comment.recipeId));
+  const recipe = recipeSnap.exists() ? recipeSnap.data() : null;
   const allowed = comment.userId === user.id || recipe?.authorId === user.id;
   if (!allowed) throw new Error('You cannot delete this comment.');
-  save('comments', comments.filter((c) => c.id !== commentId));
+
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'comments', commentId));
+  if (recipeSnap.exists()) {
+    batch.update(doc(db, 'recipes', comment.recipeId), { commentCount: increment(-1) });
+  }
+  await batch.commit();
 }
 
 /* ------------------------------ Users ------------------------------ */
 
-export function currentUser() {
-  const id = db.read('session');
-  return id ? publicUser(load('users').find((u) => u.id === id)) : null;
-}
-
-export async function login(email, password) {
-  await wait(300);
-  const user = load('users').find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-  if (!user || user.password !== password) throw new Error('Incorrect email or password.');
-  db.write('session', user.id);
-  return publicUser(user);
-}
-
-export async function register({ name, email, password, role }) {
-  await wait(300);
-  const users = load('users');
-  if (users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())) {
-    throw new Error('An account with this email already exists.');
-  }
-  const user = {
-    id: uid('u'),
-    name: name.trim(),
-    email: email.trim(),
-    password, // demo only: a real backend must hash passwords
-    role: role === 'creator' ? 'creator' : 'user',
-    avatar: role === 'creator' ? '🧑‍🍳' : '🙂',
-    bio: '',
-    favourites: [],
-    joinedAt: new Date().toISOString(),
-  };
-  save('users', [...users, user]);
-  db.write('session', user.id);
-  return publicUser(user);
-}
-
-export function logout() {
-  db.write('session', null);
-}
-
-export async function updateProfile(userId, changes) {
-  await wait();
-  const users = load('users');
-  const index = users.findIndex((u) => u.id === userId);
-  if (index === -1) throw new Error('User not found');
-  users[index] = { ...users[index], name: changes.name.trim() || users[index].name, bio: changes.bio.trim(), avatar: changes.avatar || users[index].avatar };
-  save('users', users);
-  return publicUser(users[index]);
-}
-
-export async function toggleFavourite(userId, recipeId) {
-  await wait(100);
-  const users = load('users');
-  const user = users.find((u) => u.id === userId);
-  if (!user) throw new Error('Please log in to save recipes.');
-  user.favourites = user.favourites.includes(recipeId)
-    ? user.favourites.filter((id) => id !== recipeId)
-    : [recipeId, ...user.favourites];
-  save('users', users);
-  return publicUser(user);
-}
-
 export async function getUser(id) {
-  await wait();
-  const user = load('users').find((u) => u.id === id);
-  if (!user) throw new Error('User not found');
-  return publicUser(user);
+  const snap = await getDoc(doc(db, 'users', id));
+  if (!snap.exists()) throw new Error('User not found');
+  return { id: snap.id, ...snap.data() };
 }
 
 export async function getChefs() {
-  await wait();
-  const ctx = context();
-  const recipes = load('recipes');
-  return load('users')
-    .filter((u) => u.role === 'creator')
+  const snap = await getDocs(query(usersCol, where('role', '==', 'creator')));
+  const chefs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  // Count recipes and total likes per chef
+  const recipesSnap = await getDocs(recipesCol);
+  const recipes = recipesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  return chefs
     .map((u) => {
       const own = recipes.filter((r) => r.authorId === u.id);
-      const likes = own.reduce((sum, r) => sum + voteCounts(ctx.votes[r.id]).ups, 0);
-      return { ...publicUser(u), recipeCount: own.length, likes };
+      const likes = own.reduce((sum, r) => sum + (r.ups || 0), 0);
+      return { ...u, recipeCount: own.length, likes };
     })
     .sort((a, b) => b.likes - a.likes);
 }
 
-/** Wipes everything saved in the browser and reloads the demo data. */
+export async function toggleFavourite(userId, recipeId) {
+  const userRef = doc(db, 'users', userId);
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) throw new Error('Please log in to save recipes.');
+  const favs = snap.data().favourites || [];
+
+  const updated = favs.includes(recipeId)
+    ? favs.filter((id) => id !== recipeId)
+    : [recipeId, ...favs];
+
+  await setDoc(userRef, { favourites: updated }, { merge: true });
+
+  const refreshed = await getDoc(userRef);
+  return { id: userId, ...refreshed.data() };
+}
+
+// Auth functions — kept as stubs for backward compatibility.
+// Real authentication is handled entirely by AuthContext + Firebase Auth.
+export function currentUser() { return null; }
+export async function login() { throw new Error('Use AuthContext for login.'); }
+export async function register() { throw new Error('Use AuthContext for registration.'); }
+export function logout() { /* handled by AuthContext */ }
+export async function updateProfile() { throw new Error('Use AuthContext saveProfile.'); }
+
+/** No-op: demo data lives in Firestore now, not localStorage. */
 export function resetDemoData() {
-  db.clearAll();
-  seed();
+  console.warn('resetDemoData: demo data is in Firestore, not localStorage.');
 }

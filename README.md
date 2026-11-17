@@ -1,8 +1,12 @@
 # Spoonful
 
-A community recipe book. Anyone can search and browse recipes. Signed-in users can vote, comment and save favourites, and chefs can publish and edit their own recipes.
+A community recipe book. Anyone can search and browse recipes. Signed-in users can vote, comment and save favourites, and chefs can publish and edit their own recipes. Admins can moderate content (delete any recipe, comment or vote).
 
-There is no backend yet. All data lives in the browser's `localStorage` and is seeded from `src/data/seed.js` on first load. The footer has a "Reset demo data" button that restores the seed.
+## Stack
+
+- **Frontend:** React, React Router, React Bootstrap, Vite
+- **Backend:** Firebase (Authentication + Cloud Firestore)
+- **Auth providers:** Email/Password, Google Sign-In
 
 ## Running it
 
@@ -22,6 +26,8 @@ Password for every seed account: `password`.
 | `chef@demo.com` | Chef (can publish recipes, has a dashboard) |
 | `user@demo.com` | Food lover (vote, comment, save) |
 
+New accounts can also be created via the sign-up page or Google Sign-In.
+
 ## Features
 
 - Search by keyword, filter by time, difficulty, cuisine, meal and diet. All filters live in the URL, so a search can be bookmarked or shared.
@@ -32,10 +38,30 @@ Password for every seed account: `password`.
 
 ## Project layout
 
-- `src/pages/`: one component per route (see `src/App.jsx`).
-- `src/components/`: shared UI pieces.
-- `src/services/api.js`: mock API over `localStorage`. Every function is async and returns plain data, so it can be swapped for `fetch()` calls when a real backend exists.
-- `src/data/seed.js`: demo users, recipes, votes and comments.
-- `src/styles/custom.scss`: Bootstrap variable overrides that set the theme.
+- `src/pages/` — one component per route (see `src/App.jsx`).
+- `src/components/` — shared UI pieces.
+- `src/context/AuthContext.jsx` — Firebase Auth state management (login, register, Google sign-in, profile sync).
+- `src/services/firebase.js` — Firebase SDK configuration.
+- `src/services/api.js` — Firestore API layer. Every function is async and returns plain data.
+- `src/styles/custom.scss` — Bootstrap variable overrides that set the theme.
+- `firestore.rules` — Firestore Security Rules (role-based access control).
 
-Built with React, React Router, React Bootstrap and Vite.
+## Firestore collections
+
+| Collection | Description |
+| --- | --- |
+| `users` | User profiles (name, avatar, role, bio, favourites) |
+| `recipes` | Recipes with denormalized vote counts (`ups`, `downs`) and `commentCount` |
+| `votes` | One doc per user-recipe pair (ID: `{recipeId}_{userId}`) |
+| `comments` | Comments linked to recipes by `recipeId` |
+
+## Security rules
+
+Four access levels enforced by Firestore Security Rules:
+
+| Role | Permissions |
+| --- | --- |
+| Not signed in | Read-only |
+| User (`user`) | Vote, comment, save favourites, edit own profile |
+| Chef (`creator`) | All above + create, edit and delete own recipes |
+| Admin (`admin`) | All above + delete any recipe, comment or vote |
