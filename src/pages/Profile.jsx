@@ -12,6 +12,13 @@ import { formatDate, timeAgo } from '../utils/format';
 
 const AVATARS = ['🙂', '😋', '🧑‍🍳', '👩‍🍳', '👨‍🍳', '🥑', '🍕', '🍜', '🐼', '🦊'];
 
+function AvatarDisplay({ src, size = 64 }) {
+  if (src?.startsWith('http')) {
+    return <img src={src} alt="" width={size} height={size} className="rounded-circle" referrerPolicy="no-referrer" />;
+  }
+  return <>{src}</>;
+}
+
 function EditProfileModal({ user, show, onHide, onSaved }) {
   const [form, setForm] = useState({ name: user.name, bio: user.bio || '', avatar: user.avatar });
   const [busy, setBusy] = useState(false);
@@ -83,7 +90,9 @@ export default function Profile() {
     <Container>
       <Card className="mb-4">
         <Card.Body className="d-flex flex-column flex-sm-row align-items-sm-center gap-3 p-4">
-          <div className="display-4 lh-1">{user.avatar}</div>
+          <div className="display-4 lh-1">
+            <AvatarDisplay src={user.avatar} size={64} />
+          </div>
           <div className="flex-grow-1">
             <h1 className="h3 mb-1">
               {user.name}{' '}
@@ -130,7 +139,7 @@ export default function Profile() {
           {comments.loading ? (
             <Spinner animation="border" size="sm" />
           ) : (comments.data || []).length === 0 ? (
-            <EmptyState icon="💬" title="No comments yet" text="Share tips and feedback on recipes you’ve tried." />
+            <EmptyState icon="💬" title="No comments yet" text="Share tips and feedback on recipes you've tried." />
           ) : (
             <ListGroup>
               {comments.data.map((c) => (
