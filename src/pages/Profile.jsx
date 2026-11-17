@@ -3,8 +3,9 @@ import { Badge, Button, Card, Container, Form, ListGroup, Modal, Spinner, Tab, T
 import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import RecipeGrid from '../components/RecipeGrid';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, saveProfile } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { auth as firebaseAuth } from '../services/firebase';
 import { useApi } from '../hooks/useApi';
 import * as api from '../services/api';
 import { EMOJIS } from '../utils/constants';
@@ -12,16 +13,25 @@ import { formatDate, timeAgo } from '../utils/format';
 
 const AVATARS = ['🙂', '😋', '🧑‍🍳', '👩‍🍳', '👨‍🍳', '🥑', '🍕', '🍜', '🐼', '🦊'];
 
+function AvatarDisplay({ src, size = 64 }) {
+  if (src?.startsWith('http')) {
+    return <img src={src} alt="" width={size} height={size} className="rounded-circle" referrerPolicy="no-referrer" />;
+  }
+  return <>{src}</>;
+}
+
 function EditProfileModal({ user, show, onHide, onSaved }) {
   const [form, setForm] = useState({ name: user.name, bio: user.bio || '', avatar: user.avatar });
   const [busy, setBusy] = useState(false);
   const notify = useToast();
 
+  const googlePhoto = firebaseAuth.currentUser?.photoURL || null;
+
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.updateProfile(user.id, form);
+      await saveProfile(user.uid, { name: form.name, bio: form.bio, avatar: form.avatar });
       onSaved();
       notify('Profile updated');
       onHide();
@@ -43,7 +53,17 @@ function EditProfileModal({ user, show, onHide, onSaved }) {
         <Modal.Body>
           <div className="mb-3">
             <Form.Label>Avatar</Form.Label>
-            <div className="d-flex flex-wrap gap-1">
+            <div className="d-flex flex-wrap gap-1 align-items-center">
+              {googlePhoto && (
+                <Button
+                  size="sm"
+                  variant={form.avatar === googlePhoto ? 'primary' : 'outline-secondary'}
+                  className="p-1 lh-1"
+                  onClick={() => setForm((f) => ({ ...f, avatar: googlePhoto }))}
+                >
+                  <img src={googlePhoto} alt="Google" width={28} height={28} className="rounded-circle" referrerPolicy="no-referrer" />
+                </Button>
+              )}
               {[...new Set([...AVATARS, ...EMOJIS.slice(0, 6)])].map((a) => (
                 <Button key={a} size="sm" variant={form.avatar === a ? 'primary' : 'outline-secondary'} className="fs-5 lh-1" onClick={() => setForm((f) => ({ ...f, avatar: a }))}>
                   {a}
@@ -83,7 +103,9 @@ export default function Profile() {
     <Container>
       <Card className="mb-4">
         <Card.Body className="d-flex flex-column flex-sm-row align-items-sm-center gap-3 p-4">
-          <div className="display-4 lh-1">{user.avatar}</div>
+          <div className="display-4 lh-1">
+            <AvatarDisplay src={user.avatar} size={64} />
+          </div>
           <div className="flex-grow-1">
             <h1 className="h3 mb-1">
               {user.name}{' '}
@@ -130,7 +152,7 @@ export default function Profile() {
           {comments.loading ? (
             <Spinner animation="border" size="sm" />
           ) : (comments.data || []).length === 0 ? (
-            <EmptyState icon="💬" title="No comments yet" text="Share tips and feedback on recipes you’ve tried." />
+            <EmptyState icon="💬" title="No comments yet" text="Share tips and feedback on recipes you've tried." />
           ) : (
             <ListGroup>
               {comments.data.map((c) => (

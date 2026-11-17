@@ -74,8 +74,13 @@ export default function AppNavbar() {
                 align="end"
                 id="user-menu"
                 title={
-                  <span>
-                    {user.avatar} {user.name}
+                  <span className="d-inline-flex align-items-center gap-1">
+                    {user.avatar?.startsWith('http') ? (
+                      <img src={user.avatar} alt="" width={24} height={24} className="rounded-circle" referrerPolicy="no-referrer" />
+                    ) : (
+                      user.avatar
+                    )}
+                    {' '}{user.name}
                   </span>
                 }
               >

@@ -5,8 +5,11 @@ import EmptyState from './EmptyState';
 
 /** Redirects guests to /login; shows a message if the user's role isn't allowed. */
 export default function ProtectedRoute({ roles, children }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
+
+  // Wait for Firebase to restore the session before redirecting.
+  if (loading) return null;
 
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
