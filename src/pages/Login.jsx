@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Button, Card, Col, Container, Form, Row } from 'react-bootstrap';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -22,7 +22,7 @@ function friendlyError(code) {
   return map[code] || 'Something went wrong. Please try again.';
 }
 
-// Inline Google "G" logo — avoids external image dependency.
+// Google icon SVG component
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48">
@@ -34,21 +34,21 @@ function GoogleIcon() {
   );
 }
 
+// Login page component
 export default function Login() {
   const { user, login, loginWithGoogle } = useAuth();
   const notify = useToast();
   const location = useLocation();
+  const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [validated, setValidated] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Once signed in, go back to wherever the user came from.
   if (user) return <Navigate to={location.state?.from || '/'} replace />;
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  // Email + password submit handler.
   const submit = async (e) => {
     e.preventDefault();
     setValidated(true);
@@ -64,19 +64,23 @@ export default function Login() {
     }
   };
 
-  // Google sign-in handler.
   const handleGoogle = async () => {
     setBusy(true);
     setError('');
     try {
-      const u = await loginWithGoogle();
-      notify(`Welcome, ${u.name}!`);
+      const { profile, isNew } = await loginWithGoogle();
+      if (isNew) {
+        navigate('/register');
+      } else {
+        notify(`Welcome back, ${profile.name}!`);
+      }
     } catch (err) {
       setError(friendlyError(err.code));
       setBusy(false);
     }
   };
 
+  // Render the login form
   return (
     <Container>
       <Row className="justify-content-center">
@@ -87,14 +91,6 @@ export default function Login() {
               <p className="text-body-secondary mb-4">Log in to vote, comment and save recipes.</p>
 
               {error && <Alert variant="danger">{error}</Alert>}
-
-              {/* Google sign-in button */}
-              <Button variant="outline-dark" className="w-100 mb-3 d-flex align-items-center justify-content-center gap-2" onClick={handleGoogle} disabled={busy}>
-                <GoogleIcon />
-                Continue with Google
-              </Button>
-
-              <div className="text-center text-body-secondary my-3">or</div>
 
               <Form noValidate validated={validated} onSubmit={submit}>
                 <Form.Group className="mb-3" controlId="login-email">
@@ -111,6 +107,13 @@ export default function Login() {
                   {busy ? 'Logging in…' : 'Log in'}
                 </Button>
               </Form>
+
+              <div className="text-center text-body-secondary my-3">or</div>
+
+              <Button variant="outline-dark" className="w-100 d-flex align-items-center justify-content-center gap-2" onClick={handleGoogle} disabled={busy}>
+                <GoogleIcon />
+                Continue with Google
+              </Button>
 
               <p className="text-center mt-4 mb-0">
                 New here? <Link to="/register">Create an account</Link>

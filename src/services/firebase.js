@@ -1,4 +1,3 @@
-// Firebase SDK initialization — single shared instance for the entire app.
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -15,7 +14,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Auth and Firestore instances — import these wherever needed.
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export default app;

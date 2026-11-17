@@ -35,16 +35,23 @@ function GoogleIcon() {
 }
 
 export default function Register() {
-  const { user, register, loginWithGoogle } = useAuth();
+  const { user, register, loginWithGoogle, completeGoogleSignUp } = useAuth();
   const notify = useToast();
   const [form, setForm] = useState({ name: '', email: '', password: '', date_of_birth: '', confirm: '', role: 'user' });
   const [validated, setValidated] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to={user.role === 'creator' ? '/dashboard' : '/'} replace />;
+  // Google user needs to fill extra fields before proceeding.
+  const [googleStep, setGoogleStep] = useState(null); // null = normal flow, object = Google user info
+  const [extraForm, setExtraForm] = useState({ name: '', role: 'user', date_of_birth: '' });
+  const [extraValidated, setExtraValidated] = useState(false);
+
+  // Redirect once fully registered (has a profile with role set).
+  if (user && !googleStep) return <Navigate to={user.role === 'creator' ? '/dashboard' : '/'} replace />;
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  const setExtra = (field) => (e) => setExtraForm((f) => ({ ...f, [field]: e.target.value }));
   const mismatch = form.confirm !== form.password;
 
   // Email + password registration.
@@ -63,19 +70,111 @@ export default function Register() {
     }
   };
 
-  // Google sign-up handler.
+  // Google sign-up
   const handleGoogle = async () => {
     setBusy(true);
     setError('');
     try {
-      const u = await loginWithGoogle();
-      notify(`Welcome to Spoonful, ${u.name}!`);
+      const { profile, isNew } = await loginWithGoogle();
+      if (isNew) {
+        // form to collect role, name and date of birth.
+        setGoogleStep(profile);
+        setExtraForm({ name: profile.name || '', role: 'user', date_of_birth: '' });
+        setBusy(false);
+      } else {
+        notify(`Welcome back, ${profile.name}!`);
+      }
     } catch (err) {
       setError(friendlyError(err.code));
       setBusy(false);
     }
   };
 
+  // save extra fields to Firestore (for google sign-up)
+  const submitExtra = async (e) => {
+    e.preventDefault();
+    setExtraValidated(true);
+    if (!e.currentTarget.checkValidity()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const u = await completeGoogleSignUp({
+        name: extraForm.name,
+        role: extraForm.role,
+        dateOfBirth: extraForm.date_of_birth,
+      });
+      setGoogleStep(null); // Clear step so the redirect triggers.
+      notify(`Welcome to Spoonful, ${u.name}!`);
+    } catch (err) {
+      setError(err.message || 'Something went wrong.');
+      setBusy(false);
+    }
+  };
+
+  // Google extra-fields form
+  if (googleStep) {
+    return (
+      <Container>
+        <Row className="justify-content-center">
+          <Col md={9} lg={6}>
+            <Card>
+              <Card.Body className="p-4 p-md-5">
+                <h1 className="h3 mb-1">Almost there!</h1>
+                <p className="text-body-secondary mb-4">
+                  Signed in as <strong>{googleStep.email}</strong>. Just a few more details.
+                </p>
+
+                {error && <Alert variant="danger">{error}</Alert>}
+
+                <Form noValidate validated={extraValidated} onSubmit={submitExtra}>
+                  <div className="mb-4">
+                    <Form.Label>I want to join as</Form.Label>
+                    <Row xs={1} sm={2} className="g-2">
+                      {ROLES.map((r) => (
+                        <Col key={r.value}>
+                          <Card
+                            as="label"
+                            htmlFor={`role-g-${r.value}`}
+                            border={extraForm.role === r.value ? 'primary' : undefined}
+                            className={`h-100 border ${extraForm.role === r.value ? 'border-2 bg-primary-subtle' : ''}`}
+                          >
+                            <Card.Body className="d-flex gap-2">
+                              <Form.Check type="radio" id={`role-g-${r.value}`} name="role" value={r.value} checked={extraForm.role === r.value} onChange={setExtra('role')} />
+                              <div>
+                                <div className="fw-semibold">{r.title}</div>
+                                <div className="small text-body-secondary">{r.text}</div>
+                              </div>
+                            </Card.Body>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+                  </div>
+
+                  <Form.Group className="mb-3" controlId="extra-name">
+                    <Form.Label>Display name</Form.Label>
+                    <Form.Control required minLength={2} maxLength={40} value={extraForm.name} onChange={setExtra('name')} />
+                    <Form.Control.Feedback type="invalid">Please enter at least 2 characters.</Form.Control.Feedback>
+                  </Form.Group>
+                  <Form.Group className="mb-4" controlId="extra-dob">
+                    <Form.Label>Date of Birth</Form.Label>
+                    <Form.Control type="date" required value={extraForm.date_of_birth} onChange={setExtra('date_of_birth')} />
+                    <Form.Control.Feedback type="invalid">Please enter a valid date.</Form.Control.Feedback>
+                  </Form.Group>
+
+                  <Button type="submit" size="lg" className="w-100" disabled={busy}>
+                    {busy ? 'Finishing up…' : 'Complete registration'}
+                  </Button>
+                </Form>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      </Container>
+    );
+  }
+
+  // Normal registration form
   return (
     <Container>
       <Row className="justify-content-center">
@@ -86,14 +185,6 @@ export default function Register() {
               <p className="text-body-secondary mb-4">Join the community in under a minute.</p>
 
               {error && <Alert variant="danger">{error}</Alert>}
-
-              {/* Google sign-up button */}
-              <Button variant="outline-dark" className="w-100 mb-3 d-flex align-items-center justify-content-center gap-2" onClick={handleGoogle} disabled={busy}>
-                <GoogleIcon />
-                Sign up with Google
-              </Button>
-
-              <div className="text-center text-body-secondary my-3">or</div>
 
               <Form noValidate validated={validated} onSubmit={submit}>
                 <div className="mb-4">
@@ -160,6 +251,14 @@ export default function Register() {
                   {busy ? 'Creating account…' : 'Create account'}
                 </Button>
               </Form>
+
+              <div className="text-center text-body-secondary my-3">or</div>
+
+              {/* Google sign-up button — below the form */}
+              <Button variant="outline-dark" className="w-100 d-flex align-items-center justify-content-center gap-2" onClick={handleGoogle} disabled={busy}>
+                <GoogleIcon />
+                Sign up with Google
+              </Button>
 
               <p className="text-center mt-4 mb-0">
                 Already have an account? <Link to="/login">Log in</Link>
