@@ -3,8 +3,9 @@ import { Badge, Button, Card, Container, Form, ListGroup, Modal, Spinner, Tab, T
 import { Link } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import RecipeGrid from '../components/RecipeGrid';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, saveProfile } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { auth as firebaseAuth } from '../services/firebase';
 import { useApi } from '../hooks/useApi';
 import * as api from '../services/api';
 import { EMOJIS } from '../utils/constants';
@@ -24,11 +25,13 @@ function EditProfileModal({ user, show, onHide, onSaved }) {
   const [busy, setBusy] = useState(false);
   const notify = useToast();
 
+  const googlePhoto = firebaseAuth.currentUser?.photoURL || null;
+
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.updateProfile(user.id, form);
+      await saveProfile(user.uid, { name: form.name, bio: form.bio, avatar: form.avatar });
       onSaved();
       notify('Profile updated');
       onHide();
@@ -50,7 +53,17 @@ function EditProfileModal({ user, show, onHide, onSaved }) {
         <Modal.Body>
           <div className="mb-3">
             <Form.Label>Avatar</Form.Label>
-            <div className="d-flex flex-wrap gap-1">
+            <div className="d-flex flex-wrap gap-1 align-items-center">
+              {googlePhoto && (
+                <Button
+                  size="sm"
+                  variant={form.avatar === googlePhoto ? 'primary' : 'outline-secondary'}
+                  className="p-1 lh-1"
+                  onClick={() => setForm((f) => ({ ...f, avatar: googlePhoto }))}
+                >
+                  <img src={googlePhoto} alt="Google" width={28} height={28} className="rounded-circle" referrerPolicy="no-referrer" />
+                </Button>
+              )}
               {[...new Set([...AVATARS, ...EMOJIS.slice(0, 6)])].map((a) => (
                 <Button key={a} size="sm" variant={form.avatar === a ? 'primary' : 'outline-secondary'} className="fs-5 lh-1" onClick={() => setForm((f) => ({ ...f, avatar: a }))}>
                   {a}

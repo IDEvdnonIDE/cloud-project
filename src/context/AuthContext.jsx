@@ -123,14 +123,21 @@ export function AuthProvider({ children }) {
     return profile;
   }, []);
 
+  const refresh = useCallback(async () => {
+    const fbUser = auth.currentUser;
+    if (!fbUser) return;
+    const profile = await loadProfile(fbUser);
+    setUser(profile);
+  }, []);
+
   const logout = useCallback(async () => {
     await signOut(auth);
     setUser(null);
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, loginWithGoogle, completeGoogleSignUp, logout }),
-    [user, loading, login, register, loginWithGoogle, completeGoogleSignUp, logout],
+    () => ({ user, loading, login, register, loginWithGoogle, completeGoogleSignUp, logout, refresh }),
+    [user, loading, login, register, loginWithGoogle, completeGoogleSignUp, logout, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
