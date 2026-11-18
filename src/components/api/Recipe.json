@@ -1,0 +1,764 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Recipe API",
+    "version": "0.1.0",
+    "description": "Proposed contract, not a deployed API. Covers listing, creating and\nretrieving public recipes, updates, deletion,\nfavourites, reviews and external API integration.\nJSON bodies use camelCase; timestamps are UTC strings.\nUnknown input fields and explicit nulls are rejected unless allowed.\nCreate requests cannot assign IDs, authorId or derived fields.\n"
+  },
+  "servers": [
+    {
+      "url": "http://host/api/v1",
+      "description": "Local development placeholder."
+    }
+  ],
+  "tags": [
+    {
+      "name": "Recipes"
+    }
+  ],
+  "paths": {
+    "/recipes": {
+      "get": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "listAllRecipes",
+        "summary": "Browse and filter public recipes",
+        "description": "Public operation with no request body. All supplied filter categories\ncombine with AND. Ingredients use ANY matching. Not fuzzy/full-text search.\nSort is based on the filters applied, default is rated DESC. Apply filters before pagination.\nInvalid query values or unknown query parameters return 400.\n",
+        "security": [
+          "can be view by anyone"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Can be food name, ingredients or title. Trimmed title substring; whitespace-only input is invalid.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "example": "cream pasta"
+          },
+          {
+            "name": "ingredients",
+            "in": "query",
+            "description": "Comma-separated canonical keys; matches ANY selected key.",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 10,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "maxLength": 80
+              }
+            },
+            "example": [
+              "pasta","tomato"
+            ]
+          },
+          {
+            "name": "useAllIngredients",
+            "in": "query",
+            "description": "True/False. If true, all ingredients will be used.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "totalTime",
+            "in": "query",
+            "description": "Total time in minutes.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 720
+            },
+            "example": 30
+          },
+          {
+            "name": "vegetarian",
+            "in": "query",
+            "description": "This is for the checkbox in dietary preferences.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "halalStatus",
+            "in": "query",
+            "description": "This is for the checkbox in dietary preferences.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "vegan",
+            "in": "query",
+            "description": "This is for the checkbox in dietary preferences.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "glutenFree",
+            "in": "query",
+            "description": "This is for the checkbox in dietary preferences.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "dairyFree",
+            "in": "query",
+            "description": "This is for the checkbox in dietary preferences.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "difficulty",
+            "in": "query",
+            "description": "Easy, Medium, Hard. Default is Any.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Any",
+                "Easy",
+                "Medium",
+                "Hard"
+              ]
+            },
+            "example": "Easy"
+          },
+          {
+            "name": "cuisine",
+            "in": "query",
+            "description": "Cuisine. Default is Any.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Any",
+                "Italian",
+                "Mexican",
+                "Indian"
+              ]
+            },
+            "example": "Italian"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token. Keep filters and limit unchanged.\nMust work across API instances. Invalid/mismatched tokens return 400.\n",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of matching recipes; an empty page is not a 404.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeListResponse"
+                },
+                "examples": {
+                  "empty": {
+                    "value": {
+                      "data": [],
+                      "pagination": {
+                        "limit": 20,
+                        "nextCursor": null
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "createRecipe",
+        "summary": "Create a public recipe",
+        "description": "Any signed-in user may create a public recipe.\nThe server derives authorId from the verified Firebase token.\nIt generates ID and timestamps and calculates totalMinutes and\ningredientCount. It validates canonical keys against the ingredient\ncatalogue and rejects duplicate keys. Combined preparation/cooking\ntime must be between 1 and 1440 minutes.\n",
+        "security": [
+          {
+            "firebaseBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRecipeRequest"
+              },
+              "example": {
+                "title": "Tomato Pasta",
+                "description": "A simple tomato pasta.",
+                "prepMinutes": 10,
+                "cookMinutes": 15,
+                "servings": 2,
+                "ingredients": [
+                  {
+                    "key": "pasta",
+                    "name": "Pasta",
+                    "quantity": 200,
+                    "unit": "g"
+                  },
+                  {
+                    "key": "tomato",
+                    "name": "Tomatoes",
+                    "quantity": 300,
+                    "unit": "g"
+                  }
+                ],
+                "steps": [
+                  "Cook the pasta.",
+                  "Cook the tomatoes and combine."
+                ],
+                "isVegetarian": true,
+                "halalStatus": "unknown"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recipe created.",
+            "headers": {
+              "Location": {
+                "description": "Relative or absolute URL of the created recipe.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "/api/v1/recipes/recipe_123"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeResponse"
+                },
+                "example": {
+                  "data": {
+                    "id": "recipe_123",
+                    "authorId": "user_456",
+                    "title": "Tomato Pasta",
+                    "description": "A simple tomato pasta.",
+                    "prepMinutes": 10,
+                    "cookMinutes": 15,
+                    "totalMinutes": 25,
+                    "servings": 2,
+                    "ingredientCount": 2,
+                    "ingredients": [
+                      {
+                        "key": "pasta",
+                        "name": "Pasta",
+                        "quantity": 200,
+                        "unit": "g"
+                      },
+                      {
+                        "key": "tomato",
+                        "name": "Tomatoes",
+                        "quantity": 300,
+                        "unit": "g"
+                      }
+                    ],
+                    "steps": [
+                      "Cook the pasta.",
+                      "Cook the tomatoes and combine."
+                    ],
+                    "isVegetarian": true,
+                    "halalStatus": "unknown",
+                    "createdAt": "2026-11-10T12:00:00Z",
+                    "updatedAt": "2026-11-10T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/recipes/{recipeId}": {
+      "parameters": [
+        {
+          "name": "recipeId",
+          "in": "path",
+          "required": true,
+          "description": "Opaque recipe ID, not a Firestore document path.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          },
+          "example": "recipe_123"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "getRecipe",
+        "summary": "Retrieve one public recipe",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Recipe found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "firebaseBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Firebase client ID token; backend must verify it."
+      }
+    },
+    "schemas": {
+      "HalalStatus": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "suitable",
+          "unsuitable"
+        ],
+        "description": "Author-provided classification; not halal certification."
+      },
+      "Ingredient": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "name",
+          "quantity",
+          "unit"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 80
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "quantity": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "Positive quantity; null means unspecified/to taste."
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          }
+        }
+      },
+      "RecipeFields": {
+        "type": "object",
+        "required": [
+          "title",
+          "description",
+          "prepMinutes",
+          "cookMinutes",
+          "servings",
+          "ingredients",
+          "steps",
+          "isVegetarian",
+          "halalStatus"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Trim before validation; whitespace-only input is invalid."
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "prepMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440
+          },
+          "cookMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440
+          },
+          "servings": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "ingredients": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Keys must be distinct; server checks catalogue membership.",
+            "items": {
+              "$ref": "#/components/schemas/Ingredient"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 30,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          "isVegetarian": {
+            "type": "boolean"
+          },
+          "halalStatus": {
+            "$ref": "#/components/schemas/HalalStatus"
+          }
+        }
+      },
+      "CreateRecipeRequest": {
+        "description": "Only the recipe fields below are accepted. Empty property schemas\nwhitelist names; RecipeFields supplies their types and constraints.\nDerived/server fields are not accepted in this request.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RecipeFields"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "title": {},
+              "description": {},
+              "prepMinutes": {},
+              "cookMinutes": {},
+              "servings": {},
+              "ingredients": {},
+              "steps": {},
+              "isVegetarian": {},
+              "halalStatus": {}
+            }
+          }
+        ]
+      },
+      "Recipe": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RecipeFields"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "authorId",
+              "totalMinutes",
+              "ingredientCount",
+              "createdAt",
+              "updatedAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "readOnly": true
+              },
+              "authorId": {
+                "type": "string",
+                "minLength": 1,
+                "readOnly": true
+              },
+              "totalMinutes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1440,
+                "readOnly": true
+              },
+              "ingredientCount": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "readOnly": true
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              }
+            }
+          }
+        ]
+      },
+      "RecipeResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Recipe"
+          }
+        }
+      },
+      "RecipeListResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Recipe"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "required": [
+              "limit",
+              "nextCursor"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50
+              },
+              "nextCursor": {
+                "type": "string",
+                "nullable": true,
+                "description": "Opaque token; null means no subsequent page."
+              }
+            }
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "code"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599,
+            "description": "Must match the actual HTTP response status."
+          },
+          "detail": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable application error code; clients should not parse detail."
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "message"
+              ],
+              "properties": {
+                "pointer": {
+                  "type": "string",
+                  "description": "JSON Pointer for a body field, if applicable."
+                },
+                "parameter": {
+                  "type": "string",
+                  "description": "Query parameter name, if applicable."
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request data, query parameters or cursor.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Bad Request",
+              "status": 400,
+              "detail": "One or more request fields are invalid.",
+              "code": "VALIDATION_ERROR",
+              "errors": [
+                {
+                  "pointer": "/prepMinutes",
+                  "message": "Must be an integer from 0 to 1440."
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Firebase ID token is missing, invalid or expired.",
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": {
+              "type": "string"
+            },
+            "example": "Bearer"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Unauthorized",
+              "status": 401,
+              "detail": "A valid Firebase ID token is required.",
+              "code": "UNAUTHENTICATED"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Recipe does not exist or is not publicly accessible.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Not Found",
+              "status": 404,
+              "detail": "Recipe not found.",
+              "code": "RECIPE_NOT_FOUND"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Request rate limit exceeded.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Too Many Requests",
+              "status": 429,
+              "detail": "Too many requests. Try again later.",
+              "code": "RATE_LIMITED"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected server failure; do not expose internal details.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Internal Server Error",
+              "status": 500,
+              "detail": "An unexpected error occurred.",
+              "code": "INTERNAL_ERROR"
+            }
+          }
+        }
+      }
+    }
+  }
+}
