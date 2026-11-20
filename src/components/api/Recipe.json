@@ -58,7 +58,7 @@
               }
             },
             "example": [
-              "pasta","tomato"
+              "pasta","cream","cheese"
             ]
           },
           {
@@ -73,7 +73,7 @@
           {
             "name": "totalTime",
             "in": "query",
-            "description": "Total time in minutes.",
+            "description": "Total time in minutes. Inlcude cook and prep time.",
             "schema": {
               "type": "integer",
               "minimum": 1,
@@ -157,6 +157,28 @@
             "example": "Italian"
           },
           {
+            "ratedUsers": "ratedUsers",
+            "in": "query",
+            "description": "The number of users who have rated the recipe. Default is Any.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "example": 100
+          },
+          {
+            "rating": "rating",
+            "in": "query",
+            "description": "The rating of the recipe. Score in percentage. Default is Any.",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "example": 4.5
+          }
+          {
             "name": "cursor",
             "in": "query",
             "description": "Opaque continuation token. Keep filters and limit unchanged.\nMust work across API instances. Invalid/mismatched tokens return 400.\n",
@@ -164,6 +186,17 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "The number of recipes to return. Default is 20.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "example": 20
           }
         ],
         "responses": {
@@ -191,9 +224,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
@@ -205,10 +235,10 @@
         ],
         "operationId": "createRecipe",
         "summary": "Create a public recipe",
-        "description": "Any signed-in user may create a public recipe.\nThe server derives authorId from the verified Firebase token.\nIt generates ID and timestamps and calculates totalMinutes and\ningredientCount. It validates canonical keys against the ingredient\ncatalogue and rejects duplicate keys. Combined preparation/cooking\ntime must be between 1 and 1440 minutes.\n",
+        "description": "This is the function to create a recipe for chef users",
         "security": [
           {
-            "firebaseBearer": []
+            "user":"chef"
           }
         ],
         "requestBody": {
@@ -220,30 +250,40 @@
               },
               "example": {
                 "title": "Tomato Pasta",
-                "description": "A simple tomato pasta.",
+                "description": "A simple delicious tomato pasta.",
                 "prepMinutes": 10,
                 "cookMinutes": 15,
                 "servings": 2,
+                "cuisine": "Italian",
+                "difficulty": "Easy",
+                "mealType": "Breakfast",
+                "vegetarian": true,
+                "halalStatus": "unknown",
+                "vegan": true,
+                "glutenFree": true,
+                "dairyFree": true,
+                "photoUrl": "https://example.com/photo.jpg",
+                "iconChose": "pasta",
                 "ingredients": [
                   {
                     "key": "pasta",
                     "name": "Pasta",
                     "quantity": 200,
-                    "unit": "g"
+                    "unit": "g",
+                    "step": "1"
                   },
                   {
                     "key": "tomato",
                     "name": "Tomatoes",
                     "quantity": 300,
-                    "unit": "g"
+                    "unit": "g",
+                    "step": "2"
                   }
                 ],
                 "steps": [
                   "Cook the pasta.",
                   "Cook the tomatoes and combine."
-                ],
-                "isVegetarian": true,
-                "halalStatus": "unknown"
+                ]
               }
             }
           }
@@ -267,37 +307,44 @@
                 },
                 "example": {
                   "data": {
-                    "id": "recipe_123",
-                    "authorId": "user_456",
+                    "id": "auto generated",
+                    "authorId": "user id from firebase",
                     "title": "Tomato Pasta",
                     "description": "A simple tomato pasta.",
                     "prepMinutes": 10,
                     "cookMinutes": 15,
-                    "totalMinutes": 25,
                     "servings": 2,
                     "ingredientCount": 2,
+                    "cuisine": "Italian",
+                    "difficulty": "Easy",
+                    "mealType": "Breakfast",
+                    "vegetarian": true,
+                    "halalStatus": "unknown",
+                    "vegan": true,
+                    "glutenFree": true,
+                    "dairyFree": true,
                     "ingredients": [
                       {
                         "key": "pasta",
                         "name": "Pasta",
                         "quantity": 200,
-                        "unit": "g"
+                        "unit": "g",
+                        "step": "1"
                       },
                       {
                         "key": "tomato",
                         "name": "Tomatoes",
                         "quantity": 300,
-                        "unit": "g"
+                        "unit": "g",
+                        "step": "2"
                       }
                     ],
                     "steps": [
                       "Cook the pasta.",
                       "Cook the tomatoes and combine."
                     ],
-                    "isVegetarian": true,
-                    "halalStatus": "unknown",
-                    "createdAt": "2026-11-10T12:00:00Z",
-                    "updatedAt": "2026-11-10T12:00:00Z"
+                    "createdAt": "auto generated",
+                    "updatedAt": "auto generated"
                   }
                 }
               }
@@ -373,15 +420,6 @@
       }
     },
     "schemas": {
-      "HalalStatus": {
-        "type": "string",
-        "enum": [
-          "unknown",
-          "suitable",
-          "unsuitable"
-        ],
-        "description": "Author-provided classification; not halal certification."
-      },
       "Ingredient": {
         "type": "object",
         "additionalProperties": false,
@@ -389,7 +427,8 @@
           "key",
           "name",
           "quantity",
-          "unit"
+          "unit",
+          "step"
         ],
         "properties": {
           "key": {
@@ -407,12 +446,18 @@
             "nullable": true,
             "minimum": 0,
             "exclusiveMinimum": true,
-            "description": "Positive quantity; null means unspecified/to taste."
+            "description": "Positive quantity; null means unspecified."
           },
           "unit": {
             "type": "string",
             "minLength": 1,
             "maxLength": 30
+          },
+          "step": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "description": "Step number of the ingredient in the recipe."
           }
         }
       },
@@ -426,8 +471,16 @@
           "servings",
           "ingredients",
           "steps",
-          "isVegetarian",
-          "halalStatus"
+          "vegetarian",
+          "halalStatus",
+          "vegan",
+          "glutenFree",
+          "dairyFree",
+          "cuisine",
+          "difficulty",
+          "mealType",
+          "photoUrl",
+          "iconChose"
         ],
         "properties": {
           "title": {
@@ -444,12 +497,12 @@
           "prepMinutes": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 1440
+            "maximum": 720
           },
           "cookMinutes": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 1440
+            "maximum": 720
           },
           "servings": {
             "type": "integer",
@@ -475,16 +528,78 @@
               "maxLength": 1000
             }
           },
-          "isVegetarian": {
+          "vegetarian": {
             "type": "boolean"
           },
           "halalStatus": {
-            "$ref": "#/components/schemas/HalalStatus"
+            "type": "boolean"
+          },
+          "vegan": {
+            "type": "boolean"
+          },
+          "glutenFree": {
+            "type": "boolean"
+          },
+          "dairyFree": {
+            "type": "boolean"
+          },
+          "cuisine": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "enum": [
+              "Italian",
+              "Mexican",
+              "Indian"
+            ]
+          },
+          "difficulty": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "enum": [
+              "Easy",
+              "Medium",
+              "Hard"
+            ]
+          },
+          "mealType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "enum": [
+              "Breakfast",
+              "Lunch",
+              "Dinner",
+              "Snack",
+              "Dessert"
+            ]
+          },
+          "photoUrl": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The URL of the photo of the recipe. Uploaded by the user."
+          },
+          "iconChose": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "enum": [
+              "pasta",
+              "rice",
+              "noodles",
+              "bread",
+              "cake",
+              "cookie",
+              "other"
+            ],
+            "description": "The icon chosen by the user from the list of icons."
           }
         }
       },
       "CreateRecipeRequest": {
-        "description": "Only the recipe fields below are accepted. Empty property schemas\nwhitelist names; RecipeFields supplies their types and constraints.\nDerived/server fields are not accepted in this request.\n",
+        "description": "Only the recipe fields below are accepted. Empty property schemas whitelist names; RecipeFields supplies their types and constraints.",
         "allOf": [
           {
             "$ref": "#/components/schemas/RecipeFields"
@@ -500,8 +615,16 @@
               "servings": {},
               "ingredients": {},
               "steps": {},
-              "isVegetarian": {},
-              "halalStatus": {}
+              "vegetarian": {},
+              "halalStatus": {},
+              "vegan": {},
+              "glutenFree": {},
+              "dairyFree": {},
+              "cuisine": {},
+              "difficulty": {},
+              "mealType": {},
+              "photoUrl": {},
+              "iconChose": {}
             }
           }
         ]
