@@ -58,7 +58,9 @@
               }
             },
             "example": [
-              "pasta","cream","cheese"
+              "pasta",
+              "cream",
+              "cheese"
             ]
           },
           {
@@ -177,15 +179,21 @@
               "maximum": 5
             },
             "example": 4.5
-          }
+          },
           {
-            "name": "cursor",
+            "name": "sort",
             "in": "query",
-            "description": "Opaque continuation token. Keep filters and limit unchanged.\nMust work across API instances. Invalid/mismatched tokens return 400.\n",
+            "description": "The field to sort the recipes by. Default is rating DESC. Customer can chose between top rated, quckiest, and newest. With newest, compare createdAT,if updatedAt is not null, compare updatedAt, otherwise compare createdAt. The tie breaker between everytie is createdAt.",
             "schema": {
               "type": "string",
-              "minLength": 1
-            }
+              "enum": [
+                "createdAt DESC",
+                "rating DESC",
+                "updatedAt DESC",
+                "totalTime ASC"
+              ]
+            },
+            "example": "rating DESC"
           },
           {
             "name": "limit",
@@ -197,6 +205,15 @@
               "maximum": 50
             },
             "example": 20
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token. Keep filters and limit unchanged.\nMust work across API instances. Invalid/mismatched tokens return 400.\n",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "responses": {
@@ -213,7 +230,7 @@
                       "data": [],
                       "pagination": {
                         "limit": 20,
-                        "nextCursor": null
+                        "nextCursor": "last item's id"
                       }
                     }
                   }
@@ -238,7 +255,7 @@
         "description": "This is the function to create a recipe for chef users",
         "security": [
           {
-            "user":"chef"
+            "user": "chef"
           }
         ],
         "requestBody": {
@@ -396,6 +413,59 @@
                 }
               }
             }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/recipes/{recipeId}/edit": {
+      "put": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "editRecipe",
+        "summary": "Update a published recipe",
+        "description": "The signed-in user must be the recipe author. The body replaces every editable field. The server keeps id, authorId and createdAt, recalculates totalMinutes and ingredientCount, and sets updatedAt.\n",
+        "security": [
+          {
+            "firebaseBearer": [],
+            "user": "chef,admin"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRecipeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recipe updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
