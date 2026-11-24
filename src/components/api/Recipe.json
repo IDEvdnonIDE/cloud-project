@@ -402,17 +402,166 @@
         ],
         "operationId": "getRecipe",
         "summary": "Retrieve one public recipe",
-        "security": [],
+        "description": "Public. A missing token is allowed and viewer is null. A valid Firebase ID token fills viewer with the caller's favourite and vote. vote maps stored values 1 to up, -1 to down, and 0 or no vote to null. An invalid or expired token returns 401. Voting, commenting, and favouriting are separate operations and require authentication.\n",
+        "security": [
+          {},
+          {
+            "firebaseBearer": []
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Recipe found.",
+            "description": "Recipe found. viewer is null unless the request has a valid Firebase ID token.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RecipeResponse"
+                  "$ref": "#/components/schemas/RecipeDetailResponse"
+                },
+                "examples": {
+                  "guest": {
+                    "summary": "No Authorization header",
+                    "value": {
+                      "data": {
+                        "id": "recipe_123",
+                        "authorId": "user_123",
+                        "title": "Tomato Pasta",
+                        "description": "A simple tomato pasta.",
+                        "prepMinutes": 10,
+                        "cookMinutes": 15,
+                        "servings": 2,
+                        "ingredientCount": 2,
+                        "totalMinutes": 25,
+                        "cuisine": "Italian",
+                        "difficulty": "Easy",
+                        "mealType": "Breakfast",
+                        "vegetarian": true,
+                        "halalStatus": true,
+                        "vegan": true,
+                        "glutenFree": true,
+                        "dairyFree": true,
+                        "photoUrl": "https://example.com/photo.jpg",
+                        "iconChose": "pasta",
+                        "ingredients": [
+                          {
+                            "key": "pasta",
+                            "name": "Pasta",
+                            "quantity": 200,
+                            "unit": "g",
+                            "step": 1
+                          },
+                          {
+                            "key": "tomato",
+                            "name": "Tomatoes",
+                            "quantity": 300,
+                            "unit": "g",
+                            "step": 2
+                          }
+                        ],
+                        "steps": [
+                          "Cook the pasta.",
+                          "Cook the tomatoes and combine."
+                        ],
+                        "createdAt": "2026-01-15T12:00:00Z",
+                        "updatedAt": "2026-01-15T12:00:00Z"
+                      },
+                      "viewer": null
+                    }
+                  },
+                  "signedIn": {
+                    "summary": "Valid Firebase ID token",
+                    "value": {
+                      "data": {
+                        "id": "recipe_123",
+                        "authorId": "user_123",
+                        "title": "Tomato Pasta",
+                        "description": "A simple tomato pasta.",
+                        "prepMinutes": 10,
+                        "cookMinutes": 15,
+                        "servings": 2,
+                        "ingredientCount": 2,
+                        "totalMinutes": 25,
+                        "cuisine": "Italian",
+                        "difficulty": "Easy",
+                        "mealType": "Breakfast",
+                        "vegetarian": true,
+                        "halalStatus": true,
+                        "vegan": true,
+                        "glutenFree": true,
+                        "dairyFree": true,
+                        "photoUrl": "https://example.com/photo.jpg",
+                        "iconChose": "pasta",
+                        "ingredients": [
+                          {
+                            "key": "pasta",
+                            "name": "Pasta",
+                            "quantity": 200,
+                            "unit": "g",
+                            "step": 1
+                          },
+                          {
+                            "key": "tomato",
+                            "name": "Tomatoes",
+                            "quantity": 300,
+                            "unit": "g",
+                            "step": 2
+                          }
+                        ],
+                        "steps": [
+                          "Cook the pasta.",
+                          "Cook the tomatoes and combine."
+                        ],
+                        "createdAt": "2026-01-15T12:00:00Z",
+                        "updatedAt": "2026-01-15T12:00:00Z"
+                      },
+                      "viewer": {
+                        "favourited": true,
+                        "vote": "up"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "favouriteRecipe": {
+                "operationId": "favouriteRecipe",
+                "description": "Favourite a recipe. Requires a signed-in user.",
+                "parameters": {
+                  "recipeId": "$request.path.recipeId"
+                }
+              },
+              "unfavouriteRecipe": {
+                "operationId": "unfavouriteRecipe",
+                "description": "Unfavourite a recipe. Requires a signed-in user.",
+                "parameters": {
+                  "recipeId": "$request.path.recipeId"
+                }
+              },
+              "commentRecipe": {
+                "operationId": "commentRecipe",
+                "description": "Comment on a recipe. Requires a signed-in user.",
+                "parameters": {
+                  "recipeId": "$request.path.recipeId"
+                }
+              },
+              "upvoteRecipe": {
+                "operationId": "upvoteRecipe",
+                "description": "Upvote a recipe. Requires a signed-in user.",
+                "parameters": {
+                  "recipeId": "$request.path.recipeId"
+                }
+              },
+              "downvoteRecipe": {
+                "operationId": "downvoteRecipe",
+                "description": "Downvote a recipe. Requires a signed-in user.",
+                "parameters": {
+                  "recipeId": "$request.path.recipeId"
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -457,6 +606,270 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RecipeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/recipes/{recipeId}/favourite": {
+      "parameters": [
+        {
+          "name": "recipeId",
+          "in": "path",
+          "required": true,
+          "description": "Opaque recipe ID, not a Firestore document path.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          },
+          "example": "recipe_123"
+        }
+      ],
+      "put": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "favouriteRecipe",
+        "summary": "Favourite a recipe",
+        "description": "Saves the recipe for the signed-in user. Guests receive 401.\n",
+        "security": [
+          {
+            "firebaseBearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Recipe saved to the caller's favourites."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "unfavouriteRecipe",
+        "summary": "Unfavourite a recipe",
+        "description": "Removes the recipe from the signed-in user's favourites. Guests receive 401.\n",
+        "security": [
+          {
+            "firebaseBearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Recipe removed from the caller's favourites."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/recipes/{recipeId}/votes/up": {
+      "parameters": [
+        {
+          "name": "recipeId",
+          "in": "path",
+          "required": true,
+          "description": "Opaque recipe ID, not a Firestore document path.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          },
+          "example": "recipe_123"
+        }
+      ],
+      "put": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "upvoteRecipe",
+        "summary": "Upvote a recipe",
+        "description": "Sets the caller's vote to up, stored as 1. Sending up again clears the vote. Guests receive 401.\n",
+        "security": [
+          {
+            "firebaseBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vote recorded. Sending the caller's current vote again clears it and returns vote as null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteResult"
+                },
+                "example": {
+                  "ups": 4,
+                  "downs": 1,
+                  "vote": "up"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/recipes/{recipeId}/votes/down": {
+      "parameters": [
+        {
+          "name": "recipeId",
+          "in": "path",
+          "required": true,
+          "description": "Opaque recipe ID, not a Firestore document path.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          },
+          "example": "recipe_123"
+        }
+      ],
+      "put": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "downvoteRecipe",
+        "summary": "Downvote a recipe",
+        "description": "Sets the caller's vote to down, stored as -1. Sending down again clears the vote. Guests receive 401.\n",
+        "security": [
+          {
+            "firebaseBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vote recorded. Sending the caller's current vote again clears it and returns vote as null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoteResult"
+                },
+                "example": {
+                  "ups": 3,
+                  "downs": 2,
+                  "vote": "down"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/recipes/{recipeId}/comments": {
+      "parameters": [
+        {
+          "name": "recipeId",
+          "in": "path",
+          "required": true,
+          "description": "Opaque recipe ID, not a Firestore document path.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          },
+          "example": "recipe_123"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "commentRecipe",
+        "summary": "Comment on a recipe",
+        "description": "Creates a comment by the signed-in user. The server assigns id, authorId, recipeId and createdAt. Clients cannot set those fields. Guests receive 401.\n",
+        "security": [
+          {
+            "firebaseBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentRequest"
+              },
+              "example": {
+                "body": "This was easy to follow."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Comment created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                },
+                "example": {
+                  "id": "comment_123",
+                  "recipeId": "recipe_123",
+                  "authorId": "user_123",
+                  "body": "This was easy to follow.",
+                  "createdAt": "2026-01-15T12:00:00Z"
                 }
               }
             }
@@ -760,38 +1173,136 @@
           "data": {
             "$ref": "#/components/schemas/Recipe"
           }
-        },
-        "links": {
-          "favouriteRecipe": {
-              "operationId": "favouriteRecipe",
-              "parameters": {
-                "recipeId": {
-                  "type": "string",
-                  "description": "The ID of the recipe to favourite."
-                }
-              },
-              "description": "Favourite a recipe."
-            },
-            "unfavouriteRecipe": {
-              "operationId": "unfavouriteRecipe",
-              "parameters": {
-                "recipeId": {
-                  "type": "string",
-                  "description": "The ID of the recipe to unfavourite."
-                }
-              },
-              "description": "Unfavourite a recipe."
-            },
-            "commentRecipe": {
-              "operationId": "commentRecipe",
-              "parameters": {
-                "recipeId": {
-                  "type": "string",
-                  "description": "The ID of the recipe to comment on."
-                }
-              },
-              "description": "Comment on a recipe."
+        }
+      },
+      "RecipeViewerState": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The signed-in caller's state for one recipe. vote maps stored values 1 to up, -1 to down, and 0 or no vote to null.",
+        "required": [
+          "favourited",
+          "vote"
+        ],
+        "properties": {
+          "favourited": {
+            "type": "boolean",
+            "description": "True when the caller has saved this recipe."
+          },
+          "vote": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "up",
+              "down"
+            ],
+            "description": "The caller's vote. Null when they have not voted."
           }
+        }
+      },
+      "RecipeDetailResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "viewer"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Recipe"
+          },
+          "viewer": {
+            "nullable": true,
+            "description": "Null for guests. Populated only when a valid Firebase ID token is sent.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RecipeViewerState"
+              }
+            ]
+          }
+        }
+      },
+      "VoteResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ups",
+          "downs",
+          "vote"
+        ],
+        "properties": {
+          "ups": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "downs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "vote": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "up",
+              "down"
+            ],
+            "description": "The caller's vote after this request. Null when the same vote is sent again and the vote is cleared."
+          }
+        }
+      },
+      "CreateCommentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Clients cannot set id, authorId, recipeId or createdAt. The server assigns those from the token and path.",
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "Trim before validation; whitespace-only input is invalid."
+          }
+        }
+      },
+      "Comment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "recipeId",
+          "authorId",
+          "body",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "readOnly": true
+          },
+          "recipeId": {
+            "type": "string",
+            "minLength": 1,
+            "readOnly": true
+          },
+          "authorId": {
+            "type": "string",
+            "minLength": 1,
+            "readOnly": true,
+            "description": "Taken from the Firebase ID token."
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        }
       },
       "RecipeListResponse": {
         "type": "object",
