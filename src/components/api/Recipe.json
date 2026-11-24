@@ -760,7 +760,38 @@
           "data": {
             "$ref": "#/components/schemas/Recipe"
           }
-        }
+        },
+        "links": {
+          "favouriteRecipe": {
+              "operationId": "favouriteRecipe",
+              "parameters": {
+                "recipeId": {
+                  "type": "string",
+                  "description": "The ID of the recipe to favourite."
+                }
+              },
+              "description": "Favourite a recipe."
+            },
+            "unfavouriteRecipe": {
+              "operationId": "unfavouriteRecipe",
+              "parameters": {
+                "recipeId": {
+                  "type": "string",
+                  "description": "The ID of the recipe to unfavourite."
+                }
+              },
+              "description": "Unfavourite a recipe."
+            },
+            "commentRecipe": {
+              "operationId": "commentRecipe",
+              "parameters": {
+                "recipeId": {
+                  "type": "string",
+                  "description": "The ID of the recipe to comment on."
+                }
+              },
+              "description": "Comment on a recipe."
+          }
       },
       "RecipeListResponse": {
         "type": "object",
