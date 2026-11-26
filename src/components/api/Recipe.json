@@ -648,7 +648,7 @@
         ],
         "operationId": "favouriteRecipe",
         "summary": "Favourite a recipe",
-        "description": "Saves the recipe for the signed-in user. Guests receive 401.\n",
+        "description": "Saves the recipe for the signed-in user. Guests will be redirected to the login page.",
         "security": [
           {
             "firebaseBearer": []
@@ -678,7 +678,7 @@
         ],
         "operationId": "unfavouriteRecipe",
         "summary": "Unfavourite a recipe",
-        "description": "Removes the recipe from the signed-in user's favourites. Guests receive 401.\n",
+        "description": "Removes the recipe from the signed-in user's favourites. Guests will be redirected to the login page.",
         "security": [
           {
             "firebaseBearer": []
@@ -723,7 +723,7 @@
         ],
         "operationId": "upvoteRecipe",
         "summary": "Upvote a recipe",
-        "description": "Sets the caller's vote to up, stored as 1. Sending up again clears the vote. Guests receive 401.\n",
+        "description": "Sets the caller's vote to up, stored as 1. Sending up again clears the vote. Guests will be redirected to the login page.",
         "security": [
           {
             "firebaseBearer": []
@@ -780,7 +780,7 @@
         ],
         "operationId": "downvoteRecipe",
         "summary": "Downvote a recipe",
-        "description": "Sets the caller's vote to down, stored as -1. Sending down again clears the vote. Guests receive 401.\n",
+        "description": "Sets the caller's vote to down, stored as -1. Sending down again clears the vote. Guests will be redirected to the login page.",
         "security": [
           {
             "firebaseBearer": []
@@ -837,7 +837,7 @@
         ],
         "operationId": "commentRecipe",
         "summary": "Comment on a recipe",
-        "description": "Creates a comment by the signed-in user. The server assigns id, authorId, recipeId and createdAt. Clients cannot set those fields. Guests receive 401.\n",
+        "description": "Creates a comment by the signed-in user. The server assigns id, authorId, recipeId and createdAt. Clients cannot set those fields. Guests will be redirected to the login page.",
         "security": [
           {
             "firebaseBearer": []
@@ -868,7 +868,7 @@
                   "id": "comment_123",
                   "recipeId": "recipe_123",
                   "authorId": "user_123",
-                  "body": "This was easy to follow.",
+                  "body": "Easy lol",
                   "createdAt": "2026-01-15T12:00:00Z"
                 }
               }
@@ -876,6 +876,58 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/recipes/{userId}/favourites": {
+      "get": {
+        "tags": [
+          "Recipes"
+        ],
+        "operationId": "getFavourites",
+        "summary": "Get the favourites of a user",
+        "description": "Gets the favourites of a user. Guests will be redirected to the login page.",
+        "security": [
+          {
+            "firebaseBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FavouritesRequest"
+              },
+              "example": {
+                "userId": "user_123"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Favourites retrieved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FavouritesResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -1077,7 +1129,7 @@
               "cookie",
               "other"
             ],
-            "description": "The icon chosen by the user from the list of icons."
+            "description": "The icon chosen by the user from the list of icons. This is just the placeholder list, dev should define it :)"
           }
         }
       },
@@ -1199,28 +1251,6 @@
           }
         }
       },
-      "RecipeDetailResponse": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "data",
-          "viewer"
-        ],
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/Recipe"
-          },
-          "viewer": {
-            "nullable": true,
-            "description": "Null for guests. Populated only when a valid Firebase ID token is sent.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/RecipeViewerState"
-              }
-            ]
-          }
-        }
-      },
       "VoteResult": {
         "type": "object",
         "additionalProperties": false,
@@ -1338,6 +1368,38 @@
           }
         }
       },
+      "FavouritesResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "description": "The list of recipes that the user has favourited. Null if the user has no favourites.",
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "$ref": "#/components/schemas/Recipe"
+            }
+          }
+        }
+      },
+      "FavouritesRequest": {
+        "type": "object",
+        "required": [
+          "userId"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The ID of the user to get the favourites of.",
+            "example": "user_123"    
+          }
+        }
+      },
       "Problem": {
         "type": "object",
         "required": [
@@ -1411,7 +1473,7 @@
               "errors": [
                 {
                   "pointer": "/prepMinutes",
-                  "message": "Must be an integer from 0 to 1440."
+                  "message": "Must be an integer from 0 to 720."
                 }
               ]
             }
