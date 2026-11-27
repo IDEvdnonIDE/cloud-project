@@ -1,22 +1,6 @@
 let URL = "https://recipeapi.io/api/v1/recipes?"
 
 export async function getExRecipes(filters) {
-
-    /*
-    const {
-        q = '',
-        ingredients = [],
-        matchAll = false,
-        maxTime = 0,
-        difficulty = '',
-        cuisine = '',
-        mealType = '',
-        diets = [],
-        authorId = '',
-        sort = 'top',
-    } = filters;
-    */
-
     const filteredQuery = [];
     let idx = 0;
 
@@ -41,7 +25,7 @@ export async function getExRecipes(filters) {
             {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${import.meta.env.FOODAPI_KEY}`,
+                    'Authorization': `Bearer ${import.meta.env.RECIPEAPI_KEY}`,
                 }
             }
         );
